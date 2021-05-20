@@ -29,11 +29,24 @@ class Blockchain(object):
 
         return self.last_block['index']+1
 
-
+    @staticmethod
     def hash(block):
         block_string = json.dumps(block, sort_keys=True).encode()
         return hashlib.sha256(block_string).hexdigest()
 
+    @property
     def last_block(self):
         return self.chain[-1]
+    
+    def proof_of_work(self,last_proof):
+        proof = 0
+        while self.valid_proof(last_proof, proof) is False:
+            proof += 1
+        return proof_of_work
+
+    &staticmethod
+    def valid_proof(last_proof, proof):
+        guess = f'{last_proof}{proof}'.encode
+        guess_hash = hashlib.sha256(guess).hexidigest()
+        return guess_hash[:4] == "0000"
 
