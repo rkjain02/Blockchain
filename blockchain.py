@@ -1,21 +1,29 @@
 import hashlib
 import json
 from textwrap import dedent
-from time import timefrom uuid import uuid4
+from time import time
+from uuid import uuid4
 
 from flask import Flask, jsonify, request
+
+from urllib.parse import urlparse
 
 
 class Blockchain(object): 
     def __init__(self):
         self.chain = []
         self.current_transactions = []
-        self.new_block(previous_hash=1, proof=100)
+        self.new_block(previous_hash='1', proof=100)
+        self.nodes() = set()
     
-    def new_block(self, proof, previous_hash=NONE):
+    def register_node(self,address):
+        parsed_url = urlparse(address)
+        self.nodes.add(parsed_url.netloc)
+
+    def new_block(self, proof, previous_hash=None):
 
         block = {
-            'index' : len(self_chain) +1,
+            'index' : len(self.chain) +1,
             'timestamp' : time(),
             'transactions': self.current_transactions,
             'proof' : proof,
@@ -25,9 +33,9 @@ class Blockchain(object):
         self.current_transactions = []
 
         self.chain.append(block)
-        return block
+        return block 
 
-    
+     
     def new_transaction(self, sender, recipient, amount):
         self.current_transactions.append({
             'sender' : sender,
@@ -50,13 +58,45 @@ class Blockchain(object):
         proof = 0
         while self.valid_proof(last_proof, proof) is False:
             proof += 1
-        return proof_of_work
+        return proof
 
-    &staticmethod
+    @staticmethod
     def valid_proof(last_proof, proof):
-        guess = f'{last_proof}{proof}'.encode
-        guess_hash = hashlib.sha256(guess).hexidigest()
+        guess = f'{last_proof}{proof}'.encode()
+        guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:4] == "0000"
+    
+    def valid_chain(self, chain):
+        last_block = chain[0]
+        current_index = 1
+        while current_index <len(chain):
+            block = chain[current_index]
+            print(f'{last_block}')
+            print(f'{block}')
+            print("\n-----------\n")
+            if block['previous_hash'] != self.hash(last_block):
+                return False
+            if not self.valid_proof(last_block['proof'], block['proof']):
+                return False
+            last_block = block
+            current_index+=1
+        return True
+    
+    def resolve_conflicts(self):
+        neighbours = self.nodes
+        new_chain = None
+        max_length = len(self.chain)
+        response = requests.get(f'http://{node}/chain')
+        if response.status_code == 200:
+            length = response.json()['length']
+            chain = response.json()['chain']
+            if length > max_length and self.valid_chain(chain):
+                max_length = length
+                new_chain = chain
+        if new_chain:
+            self_chain = new_chain
+            return True
+        return False
 
 app = Flask(__name__)
 
@@ -69,25 +109,29 @@ def mine():
     last_block = blockchain.last_block
     last_proof = last_block['proof']
     proof = blockchain.proof_of_work(last_proof)
-    blockchain.new_transaction(sender='0', recipient = node_identifier, amount=1)
+    blockchain.new_transaction(
+        sender='0', 
+        recipient = node_identifier, 
+        amount=1,
+    )
 
     previous_hash = blockchain.hash(last_block)
     block = blockchain.new_block(proof, previous_hash)
 
     response = {
         'message': 'New Block Forged',
-        'index' : block['index']
-        'transactions' : block['transaction'],
+        'index' : block['index'],
+        'transactions' : block['transactions'],
         'proof' : block['proof'],
         'previous_hash' : block['previous_hash'],
     }
 
     return jsonify(response), 200
 
-@app.route('/transactions/new', methods=['GET'])
+@app.route('/transactions/new', methods=['POST'])
 def new_transaction():
     values = request.get_json()
-    required = ['sender', 'recipeint', 'amount']
+    required = ['sender', 'recipient', 'amount']
     if not all(k in values for k in required):
         return 'Missing values', 400
     
@@ -105,4 +149,5 @@ def full_chain():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
 
