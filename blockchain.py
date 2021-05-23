@@ -15,11 +15,18 @@ class Blockchain(object):
         self.chain = []
         self.current_transactions = []
         self.new_block(previous_hash='1', proof=100)
-        self.nodes() = set()
+        self.nodes = set()
     
     def register_node(self,address):
+        
         parsed_url = urlparse(address)
-        self.nodes.add(parsed_url.netloc)
+        if parsed_url.netloc:
+            self.nodes.add(parsed_url.netloc)
+        elif parsed_url.path:
+            self.nodes.add(parsed_url.path)
+        else:
+            raise ValueError('Invalid URL')
+        
 
     def new_block(self, proof, previous_hash=None):
 
@@ -55,15 +62,18 @@ class Blockchain(object):
     def last_block(self):
         return self.chain[-1]
     
-    def proof_of_work(self,last_proof):
+    def proof_of_work(self,last_block):
+       
+        last_proof = last_block['proof']
+        last_hash = self.hash(last_block)
         proof = 0
-        while self.valid_proof(last_proof, proof) is False:
+        while self.valid_proof(last_proof, proof, last_hash) is False:
             proof += 1
         return proof
 
     @staticmethod
-    def valid_proof(last_proof, proof):
-        guess = f'{last_proof}{proof}'.encode()
+    def valid_proof(last_proof, proof, last_hash):
+        guess = f'{last_proof}{proof}{last_hash}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
         return guess_hash[:4] == "0000"
     
@@ -75,9 +85,10 @@ class Blockchain(object):
             print(f'{last_block}')
             print(f'{block}')
             print("\n-----------\n")
+            last_block_hash = self.hash(last_block)
             if block['previous_hash'] != self.hash(last_block):
                 return False
-            if not self.valid_proof(last_block['proof'], block['proof']):
+            if not self.valid_proof(last_block['proof'], block['proof'], last_block_hash):
                 return False
             last_block = block
             current_index+=1
@@ -87,15 +98,19 @@ class Blockchain(object):
         neighbours = self.nodes
         new_chain = None
         max_length = len(self.chain)
-        response = requests.get(f'http://{node}/chain')
-        if response.status_code == 200:
-            length = response.json()['length']
-            chain = response.json()['chain']
-            if length > max_length and self.valid_chain(chain):
-                max_length = length
-                new_chain = chain
+        
+        for node in neighbours:
+            response = requests.get(f'http://{node}/chain')
+
+            if response.status_code == 200:
+                length = response.json()['length']
+                chain = response.json()['chain']
+                if length > max_length and self.valid_chain(chain):
+                    max_length = length
+                    new_chain = chain
+
         if new_chain:
-            self_chain = new_chain
+            self.chain = new_chain
             return True
         return False
 
@@ -108,8 +123,7 @@ blockchain = Blockchain()
 @app.route('/mine', methods=['GET'])
 def mine():
     last_block = blockchain.last_block
-    last_proof = last_block['proof']
-    proof = blockchain.proof_of_work(last_proof)
+    proof = blockchain.proof_of_work(last_block)
     blockchain.new_transaction(
         sender='0', 
         recipient = node_identifier, 
@@ -154,20 +168,21 @@ def register_nodes():
 
     nodes = values.get('nodes')
     if nodes is None:
-        return "ErrorL please supply a valid list of nodes", 400
+        return "Error please supply a valid list of nodes", 400
     for node in nodes:
         blockchain.register_node(node)
     response = {
         'message' : 'New nodes have been added',
         'total_nodes' : list(blockchain.nodes),
     }
+    return jsonify(response), 201
 
 @app.route('/nodes/resolve', methods=['GET'])
 def consensus():
     replaced = blockchain.resolve_conflicts()
 
     if replaced:
-        resposne = {
+        response = {
             'message': 'Our chain was replaced',
             'new_chain': blockchain.chain
         }
@@ -179,6 +194,15 @@ def consensus():
     return jsonify(response), 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--port', default=5000, type=int, help='port to listen on')
+    args = parser.parse_args()
+    port = args.port
+
+    app.run(host='0.0.0.0', port=port)
+
+
 
 
